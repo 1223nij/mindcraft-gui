@@ -74,11 +74,11 @@ export async function RunUpdate(): Promise<void> {
     }
 
     (global as any).win = win;
-    const git = simpleGit(mindCraftLocation)
+    let gitt
     if(!fs.existsSync(mindCraftLocation)){
         newLabel.setText("Mindcraft installation at " + mindCraftLocation + " not found. Cloning repo...");
         try {
-            await git.clone(repoUrl, mindCraftLocation);
+            await git().clone(repoUrl, mindCraftLocation);
             newLabel.setText("Installed Mindcraft at " + mindCraftLocation + " with Git");
             checkKeys()
         } catch (error) {
@@ -111,19 +111,43 @@ export async function RunUpdate(): Promise<void> {
         newLabel.setText("Mindcraft installation at " + mindCraftLocation + " found.");
         checkKeys()
     }
-    console.log('Stashing local changes...');
-    await git.stash(['save', 'Stashing changes before pull']);
+    gitt = simpleGit(mindCraftLocation)
+    const status = await gitt.status();
 
-    console.log('Pulling changes from remote...');
-    await git.pull(["origin", "main"]);
-    console.log('Successfully pulled changes from remote.');
-
-    console.log('Applying stashed changes...');
-    await git.stash(['pop']);
-    console.log('Stashed changes applied.');
+    if (status.behind > 0){
+        label.setText("Updating");
+        let tempFolder: string;
+        newLabel.setText("Stashing configs");
+        fs.mkdtemp("mindcraftManager", (err, folder) => {
+            if (err) throw err;
+            tempFolder = folder;
+        })
+        fs.cpSync(mindCraftLocation + "/profiles", tempFolder + "/profiles");
+        fs.cpSync(mindCraftLocation + "/settings.js", tempFolder + "/settings.js");
+        fs.cpSync(mindCraftLocation + "/keys.json", tempFolder + "/keys.json");
+        newLabel.setText("Deleting MindCraft");
+        fs.rmSync(mindCraftLocation, { recursive: true, force: true });
+        newLabel.setText("Cloning MindCraft");
+        try {
+            await git().clone(repoUrl, mindCraftLocation);
+            newLabel.setText("Updated Mindcraft at " + mindCraftLocation + " with Git");
+            fs.cpSync(tempFolder + "/profiles", mindCraftLocation + "/profiles");
+            fs.cpSync(tempFolder + "/settings.js", mindCraftLocation + "/settings.js");
+            fs.cpSync(tempFolder + "/keys.json", mindCraftLocation + "/keys.json");
+            newLabel.setText("Done!");
+            console.log("Done!")
+        } catch (error) {
+            console.log(error);
+            fs.cpSync(tempFolder + "/profiles", mindCraftLocation + "/profiles");
+            fs.cpSync(tempFolder + "/settings.js", mindCraftLocation + "/settings.js");
+            fs.cpSync(tempFolder + "/keys.json", mindCraftLocation + "/keys.json");
+            console.log("Changes reverted.")
+            process.exit(1)
+        }
+    }
 
     newLabel.setText("Checking for node_modules");
-    if(!fs.existsSync(mindCraftLocation + "/node_modules")) {
+    if (!fs.existsSync(mindCraftLocation + "/node_modules")) {
         console.log("node_modules not found")
         newLabel.setText("Installing node_modules");
         await new Promise<void>((resolve) => {
